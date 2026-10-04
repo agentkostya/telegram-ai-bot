@@ -8,7 +8,6 @@ import sys
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
-HF_API_TOKEN = os.environ["HF_API_TOKEN"] # Новый ключ для картинок
 
 TOPICS = [
     "футуристические технологии и искусственный интеллект",
@@ -58,37 +57,61 @@ def generate_content():
     return json.loads(result_text)
 
 def send_to_telegram_with_photo(post_text, image_prompt):
-    # 1. Генерируем картинку через Hugging Face (Stable Diffusion XL - без водяных знаков!)
-    hf_url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-    payload = {"inputs": image_prompt}
+    # 1. Генерируем картинку через Prodia (бесплатно, без ключа, без водяных знаков!)
+    prodia_url = "https://api.prodia.com/v1/sd/generate"
     
-    print("🎨 Запрашиваем картинку у Hugging Face...")
-    hf_response = requests.post(hf_url, headers=headers, json=payload, timeout=90)
+    payload = {
+        "model": "sd_xl_base_1.0.safetensors [be9edd61]",  # Stable Diffusion XL
+        "prompt": image_prompt + ", masterpiece, best quality, highly detailed",
+        "negative_prompt": "text, watermark, signature, logo, blurry, bad quality",
+        "steps": 25,
+        "cfg_scale": 7,
+        "width": 1024,
+        "height": 1024,
+        "seed": random.randint(1, 10000)
+    }
     
-    # Если модель "загружается" (бывает на бесплатном тарифе), Hugging Face вернет ошибку. 
-    # Мы её перехватим, чтобы вы видели причину.
-    if hf_response.status_code == 503:
-        raise Exception("Модель Hugging Face сейчас загружается. Просто запустите workflow еще раз через минуту!")
-    hf_response.raise_for_status()
+    print("🎨 Запрашиваем картинку у Prodia...")
+    prodia_response = requests.post(prodia_url, json=payload, timeout=30)
+    prodia_response.raise_for_status()
     
-    # Hugging Face возвращает саму картинку (байты), а не ссылку
-    image_bytes = hf_response.content
+    job_data = prodia_response.json()
+    job_id = job_data["job"]
+    
+    # 2. Ждем, пока картинка сгенерируется (обычно 5-15 секунд)
+    status_url = f"https://api.prodia.com/v1/job/{job_id}"
+    max_attempts = 30
+    
+    for attempt in range(max_attempts):
+        status_response = requests.get(status_url, timeout=10)
+        status_response.raise_for_status()
+        status_data = status_response.json()
+        
+        if status_data["status"] == "succeeded":
+            image_url = status_data["imageUrl"]
+            print(f"✅ Картинка готова! (попытка {attempt + 1})")
+            break
+        elif status_data["status"] == "failed":
+            raise Exception("Prodia не смогла сгенерировать картинку")
+        
+        print(f"⏳ Генерация... (попытка {attempt + 1}/{max_attempts})")
+        import time
+        time.sleep(2)
+    else:
+        raise Exception("Превышено время ожидания генерации картинки")
 
-    # 2. Отправляем в Telegram как файл (фото)
+    # 3. Отправляем в Telegram
     tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     
-    files = {
-        'photo': ('image.jpg', image_bytes, 'image/jpeg')
-    }
-    data = {
-        'chat_id': CHANNEL_ID,
-        'caption': post_text,
-        'parse_mode': 'HTML'
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "photo": image_url,
+        "caption": post_text,
+        "parse_mode": "HTML"
     }
     
     print("📤 Отправляем фото с текстом в Telegram...")
-    tg_response = requests.post(tg_url, files=files, data=data, timeout=30)
+    tg_response = requests.post(tg_url, json=payload, timeout=30)
     tg_response.raise_for_status()
     return tg_response.json()
 
