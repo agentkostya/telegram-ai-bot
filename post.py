@@ -4,7 +4,6 @@ import random
 import json
 import sys
 import time
-import base64
 
 # Загружаем настройки из секретов GitHub
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -30,7 +29,7 @@ PROMPT_TEMPLATE = """Ты - профессиональный помощник д
 НЕ добавляй никакой другой текст, маркдаун (типа ```json) или комментарии. Только валидный JSON."""
 
 def generate_content():
-    """Генерируем текст через OpenRouter (проверенный рабочий вариант)"""
+    """Генерируем текст через OpenRouter (используем умный роутер бесплатных моделей)"""
     topic = random.choice(TOPICS)
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -41,7 +40,7 @@ def generate_content():
             "X-Title": "Telegram AI Bot",
         },
         json={
-            "model": "qwen/qwen-2.5-7b-instruct:free",
+            "model": "openrouter/free", # <-- Умный роутер: всегда находит рабочую бесплатную модель
             "messages": [{"role": "user", "content": PROMPT_TEMPLATE.format(topic=topic)}],
             "temperature": 0.8,
             "response_format": { "type": "json_object" }
@@ -80,7 +79,6 @@ def generate_image(image_prompt):
                 
             hf_response.raise_for_status()
             
-            # Hugging Face возвращает саму картинку (байты)
             print("✅ Картинка успешно сгенерирована!")
             return hf_response.content
             
