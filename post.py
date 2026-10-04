@@ -40,7 +40,7 @@ def generate_post():
             "X-Title": "Telegram AI Bot",
         },
         json={
-            "model": "qwen/qwen-2.5-72b-instruct:free", # Бесплатная мощная модель Qwen
+            "model": "qwen/qwen3.8-27b:free", # Бесплатная мощная модель Qwen
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.8,
         },
