@@ -7,7 +7,7 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
-# Темы для постов (ПОМЕНЯЙТЕ их под тематику вашего канала!)
+# Темы для постов (можете поменять их под свой канал)
 TOPICS = [
     "интересный факт о технологиях и будущем",
     "короткий совет по продуктивности",
@@ -40,12 +40,17 @@ def generate_post():
             "X-Title": "Telegram AI Bot",
         },
         json={
-              "model": "qwen/qwen-2.5-72b-instruct:free", # Бесплатная мощная модель Qwen
+            "model": "qwen/qwen-2.5-72b-instruct:free",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.8,
         },
         timeout=60,
     )
+    
+    # Эта строка покажет точную причину ошибки от OpenRouter, если она будет
+    if response.status_code != 200:
+        print(f"❌ Ошибка OpenRouter: {response.status_code} - {response.text}")
+        
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"].strip()
 
