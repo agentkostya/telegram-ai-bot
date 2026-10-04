@@ -1,0 +1,30 @@
+name: Auto Post to Telegram
+
+on:
+  # Расписание: каждый день в 10:00 по МСК (07:00 UTC)
+  schedule:
+    - cron: '0 7 * * *'
+  # Позволяет запустить вручную кнопкой в интерфейсе GitHub
+  workflow_dispatch:
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and send post
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: python post.py
