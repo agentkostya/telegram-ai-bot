@@ -52,11 +52,11 @@ def generate_content():
     return json.loads(result_text)
 
 def send_to_telegram_with_photo(post_text, image_prompt):
-    # 1. Генерируем ссылку на картинку через Pollinations.ai (бесплатно, без ключа!)
-    # Кодируем промпт для безопасной вставки в URL и добавляем случайное число (seed), чтобы картинки не повторялись
+    # 1. Генерируем ссылку на картинку через Pollinations.ai
+    # Добавили model=flux (лучшее качество и гарантированно без лого) и enhance=true
     encoded_prompt = urllib.parse.quote(image_prompt)
     random_seed = random.randint(1, 10000)
-    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&seed={random_seed}"
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&seed={random_seed}&model=flux&enhance=true"
 
     # 2. Отправляем в Telegram как фото с текстовой подписью
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
