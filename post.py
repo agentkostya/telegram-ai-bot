@@ -40,7 +40,7 @@ def generate_post():
             "X-Title": "Telegram AI Bot",
         },
         json={
-            "model": "qwen/qwen-2.5-72b-instruct:free",
+            "model": "nvidia/nemotron-3.5-lightning:free",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.8,
         },
