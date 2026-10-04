@@ -3,13 +3,12 @@ import requests
 import random
 import json
 import sys
-import time
+import urllib.parse
 
 # Загружаем настройки из секретов GitHub
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
-HF_API_TOKEN = os.environ["HF_API_TOKEN"]
 
 TOPICS = [
     "футуристические технологии и искусственный интеллект",
@@ -19,17 +18,19 @@ TOPICS = [
     "загадки истории, которые не имеют ответа"
 ]
 
+# Добавили требование "no watermark, no text" прямо в промпт для ИИ
 PROMPT_TEMPLATE = """Ты - профессиональный помощник для ведения Telegram-канала.
 Тема: {topic}
 
 Сгенерируй ответ СТРОГО в формате JSON с двумя полями:
 1. "post_text": Короткий, живой пост на русском языке (3-5 предложений, с 1-2 эмодзи, без хештегов).
-2. "image_prompt": Краткое, детальное визуальное описание картинки для генерации на АНГЛИЙСКОМ языке (например: "cinematic shot of a futuristic neon city, highly detailed, 8k resolution, dramatic lighting, no text, no watermark").
+2. "image_prompt": Краткое, детальное визуальное описание картинки для генерации на АНГЛИЙСКОМ языке. ОБЯЗАТЕЛЬНО добавь в конец: ", no watermark, no text, no signature, masterpiece, 8k". 
+Пример: "cinematic shot of a futuristic neon city, highly detailed, 8k resolution, dramatic lighting, no watermark, no text, no signature, masterpiece, 8k".
 
 НЕ добавляй никакой другой текст, маркдаун (типа ```json) или комментарии. Только валидный JSON."""
 
 def generate_content():
-    """Генерируем текст через OpenRouter (используем умный роутер бесплатных моделей)"""
+    """Генерируем текст через OpenRouter (умный роутер)"""
     topic = random.choice(TOPICS)
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -40,7 +41,7 @@ def generate_content():
             "X-Title": "Telegram AI Bot",
         },
         json={
-            "model": "openrouter/free", # <-- Умный роутер: всегда находит рабочую бесплатную модель
+            "model": "openrouter/free",
             "messages": [{"role": "user", "content": PROMPT_TEMPLATE.format(topic=topic)}],
             "temperature": 0.8,
             "response_format": { "type": "json_object" }
@@ -50,7 +51,7 @@ def generate_content():
     response.raise_for_status()
     result_text = response.json()["choices"][0]["message"]["content"]
 
-    # Очищаем ответ от возможных маркдаун-оберток
+    # Очищаем ответ от маркдауна
     result_text = result_text.strip()
     if result_text.startswith("```json"): result_text = result_text[7:]
     if result_text.startswith("```"): result_text = result_text[3:]
@@ -60,36 +61,27 @@ def generate_content():
     return json.loads(result_text)
 
 def generate_image(image_prompt):
-    """Генерируем картинку через Hugging Face FLUX (быстро, без водяных знаков, с защитой от сбоев)"""
-    hf_url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-    payload = {"inputs": image_prompt + ", masterpiece, best quality, highly detailed, no text, no watermark"}
+    """Скачиваем картинку напрямую с Pollinations как файл (без водяных знаков)"""
+    encoded_prompt = urllib.parse.quote(image_prompt)
+    random_seed = random.randint(1, 99999)
     
-    print("🎨 Запрашиваем картинку у Hugging Face (FLUX)...")
+    # Используем модель flux и nologo=true
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&seed={random_seed}&model=flux"
     
-    # Делаем до 3 попыток, чтобы обойти временные сбои сети GitHub Actions
-    for attempt in range(3):
-        try:
-            hf_response = requests.post(hf_url, headers=headers, json=payload, timeout=90)
-            
-            if hf_response.status_code == 503:
-                print(f"⏳ Модель загружается, пробуем еще раз (попытка {attempt + 1}/3)...")
-                time.sleep(5)
-                continue
-                
-            hf_response.raise_for_status()
-            
-            print("✅ Картинка успешно сгенерирована!")
-            return hf_response.content
-            
-        except requests.exceptions.RequestException as e:
-            print(f"⚠️ Сетевая ошибка (попытка {attempt + 1}/3): {e}")
-            if attempt == 2:
-                raise Exception("Не удалось сгенерировать картинку после 3 попыток")
-            time.sleep(5)
+    print(f"🎨 Скачиваем картинку с Pollinations (seed: {random_seed})...")
+    
+    # Скачиваем картинку как байты, а не просто ссылку
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    response = requests.get(image_url, headers=headers, timeout=60)
+    response.raise_for_status()
+    
+    print("✅ Картинка успешно скачана в память!")
+    return response.content
 
 def send_to_telegram_with_photo(post_text, image_bytes):
-    """Отправляем фото с текстом в Telegram"""
+    """Отправляем фото (как файл) с текстом в Telegram"""
     tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     
     files = {
@@ -98,7 +90,7 @@ def send_to_telegram_with_photo(post_text, image_bytes):
     data = {
         'chat_id': CHANNEL_ID,
         'caption': post_text,
-        'parse_mode': 'HTML'
+        'parse_mode': "HTML"
     }
     
     print("📤 Отправляем фото с текстом в Telegram...")
