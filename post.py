@@ -11,42 +11,56 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
-# Официальные RSS-ленты деловых новостей РФ
+# Надежные RSS-ленты (VC.ru - лучший для бизнеса/IT, ТАСС и Лента как запасные)
 RSS_FEEDS = [
-    "https://www.rbc.ru/rbcnews/rss/",          # РБК: Главные новости
-    "https://tass.ru/rss/v2.xml?categories=7",  # ТАСС: Экономика
-    "https://www.vedomosti.ru/rss/news"         # Ведомости (если доступна, иначе игнорируется)
+    "https://vc.ru/rss",                         # VC.ru: Бизнес, стартапы, технологии (очень надежный)
+    "https://tass.ru/rss/v2.xml?categories=7",   # ТАСС: Экономика
+    "https://lenta.ru/rss/news/economy"          # Лента.ру: Экономика
 ]
 
+# Заголовки, чтобы притвориться обычным браузером и обойти блокировки
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/rss+xml, application/xml, text/xml, */*"
+}
+
 def get_real_news():
-    """Получает реальные свежие новости из официальных RSS-лент"""
-    feed_url = random.choice(RSS_FEEDS)
-    print(f"📡 Загружаем официальную ленту новостей: {feed_url}")
+    """Получает реальные свежие новости из официальных RSS-лент с обходом блокировок"""
     
-    try:
-        feed = feedparser.parse(feed_url)
-        
-        if not feed.entries:
-            raise Exception("Лента новостей пуста или недоступна")
-        
-        # Берем 2-3 случайные свежие новости из топ-10 последних
-        recent_news = feed.entries[:10]
-        selected_news = random.sample(recent_news, min(3, len(recent_news)))
-        
-        # Формируем контекст для ИИ
-        news_context = "\n".join([
-            f"- Заголовок: {entry.title}\n  Кратко: {entry.get('summary', entry.get('description', 'Нет описания'))[:250]}...\n  Источник: {entry.link}"
-            for entry in selected_news
-        ])
-        return news_context
-        
-    except Exception as e:
-        raise Exception(f"Ошибка загрузки RSS-ленты: {e}")
+    for feed_url in RSS_FEEDS:
+        print(f"📡 Пытаемся загрузить ленту: {feed_url}")
+        try:
+            # Делаем запрос как обычный браузер
+            response = requests.get(feed_url, headers=HEADERS, timeout=15)
+            response.raise_for_status()
+            
+            # Парсим полученный XML-контент
+            feed = feedparser.parse(response.content)
+            
+            if feed.entries:
+                print(f"✅ Успешно загружено {len(feed.entries)} новостей!")
+                
+                # Берем 2-3 случайные свежие новости из топ-10
+                recent_news = feed.entries[:10]
+                selected_news = random.sample(recent_news, min(3, len(recent_news)))
+                
+                # Формируем контекст для ИИ
+                news_context = "\n".join([
+                    f"- Заголовок: {entry.title}\n  Кратко: {entry.get('summary', entry.get('description', 'Нет описания'))[:300]}...\n  Источник: {entry.link}"
+                    for entry in selected_news
+                ])
+                return news_context
+                
+        except Exception as e:
+            print(f"⚠️ Не удалось загрузить эту ленту, пробуем следующую: {e}")
+            continue
+            
+    raise Exception("Не удалось загрузить новости ни из одного источника")
 
 def generate_content(news_context):
     """Генерирует пост на основе реальных новостей"""
     prompt = f"""Ты - профессиональный финансовый журналист и ведущий Telegram-канала о бизнесе и экономике РФ.
-Вот реальные свежие новости из официальных источников (РБК, ТАСС):
+Вот реальные свежие новости из проверенных источников:
 {news_context}
 
 Твоя задача: Напиши качественный, экспертный пост для Telegram-канала на основе этих реальных фактов.
@@ -101,10 +115,7 @@ def generate_image(image_prompt):
     image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&seed={random_seed}&model=flux"
     
     print("🎨 Скачиваем картинку с Pollinations...")
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    response = requests.get(image_url, headers=headers, timeout=60)
+    response = requests.get(image_url, headers=HEADERS, timeout=60)
     response.raise_for_status()
     
     print("✅ Картинка успешно скачана в память!")
@@ -129,7 +140,7 @@ def send_to_telegram_with_photo(post_text, image_bytes):
     return tg_response.json()
 
 def main():
-    print("📡 Этап 1: Получение реальных новостей из официальных источников...")
+    print("📡 Этап 1: Получение реальных новостей...")
     try:
         news_context = get_real_news()
         print("✅ Новости успешно получены!")
