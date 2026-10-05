@@ -4,66 +4,76 @@ import random
 import json
 import sys
 import urllib.parse
+from duckduckgo_search import DDGS
 
 # Загружаем настройки из секретов GitHub
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
-# Темы для новостей о бизнесе и экономике РФ
-TOPICS = [
-    "Новости о бизнесе в России",
-    "Экономические новости РФ",
-    "Развитие стартапов в России",
-    "Российский рынок акций и финансы",
-    "Инновации в российской экономике",
-    "Трудовой рынок и занятость в России",
-    "Международная торговля России"
+# Реальные темы для поиска новостей
+SEARCH_QUERIES = [
+    "Новости бизнеса Россия последние",
+    "Экономические новости РФ официальные",
+    "Крупные компании Россия новые проекты",
+    "Стартапы и технологии бизнес Россия"
 ]
 
-# Промпт для генерации контента о бизнесе и экономике РФ
-PROMPT_TEMPLATE = """Ты - профессиональный журналист для ведения Telegram-канала о бизнесе и экономике РФ.
-Тема: {topic}
-
-Используй свои знания о российском бизнесе, экономике и финансовых рынках.
-Ссылайся только на достоверные официальные источники (РБК, TACC, Коммерсант, FinExpertiza, МЭР России, ЦБ РФ, Московская биржа и т.д.).
-
-Сгенерируй ответ СТРОГО в формате JSON с четырьмя полями:
-1. "post_text": ПОДРОБНЫЙ пост на русском языке (12-15 предложений, с 3-4 эмодзи, без хештегов). Должен содержать:
-   - Описание актуальной ситуации в теме (2-3 предложения)
-   - Ключевые факты и тренды (2-3 предложения)
-   - Влияние на российский рынок и экономику (2-3 предложения)
-   - Мнения аналитиков и экспертов (2-3 предложения)
-   - Будущие перспективы развития (2-3 предложения)
-   Включи конкретные цифры, суммы, проценты, имена компаний и экспертов.
-
-2. "key_facts": Массив из 5-6 ключевых статистических фактов по теме.
-   Примеры: "Рост на 15.3% за квартал", "Инвестиции превысили $2.5 млрд", "Создано более 5000 рабочих мест"
-
-3. "source_info": Официальные авторитетные источники информации.
-   Используй: РБК, TACC, Коммерсант, FinExpertiza, МЭР России, ЦБ РФ, Московская биржа
-
-4. "image_prompt": Профессиональное визуальное описание картинки на АНГЛИЙСКОМ языке (12-15 слов). 
-   Должно отражать бизнес/экономику/финансы. ОБЯЗАТЕЛЬНО в конец: ", no watermark, no text, no signature, masterpiece, 8k"
-   Примеры: "professional business meeting with stock market graphs, growth charts, financial data on screens, modern office, 8k"
-
-НЕ добавляй никакой другой текст, маркдаун или комментарии. Только валидный JSON."""
-
-def generate_content():
-    """Генерируем текст через OpenRouter по заданной теме"""
-    topic = random.choice(TOPICS)
+def get_real_news():
+    """Ищет реальные свежие новости в интернете"""
+    query = random.choice(SEARCH_QUERIES)
+    print(f"🔍 Ищем реальные новости по запросу: '{query}'")
     
+    try:
+        with DDGS() as ddgs:
+            # Получаем топ-3 реальных результата с ссылками
+            results = list(ddgs.text(query, max_results=3, region='ru-ru'))
+        
+        if not results:
+            raise Exception("Поиск не вернул результатов")
+        
+        # Формируем контекст для ИИ из реальных источников
+        news_context = "\n".join([
+            f"- {r['title']}\n  Кратко: {r['body']}\n  Источник: {r['href']}" 
+            for r in results
+        ])
+        return news_context
+    except Exception as e:
+        raise Exception(f"Ошибка поиска новостей: {e}")
+
+def generate_content(news_context):
+    """Генерирует пост на основе реальных новостей"""
+    prompt = f"""Ты - профессиональный финансовый журналист и ведущий Telegram-канала о бизнесе.
+Вот реальные свежие новости, которые я нашел в официальных источниках:
+{news_context}
+
+Твоя задача: Напиши качественный пост для Telegram-канала на основе этих реальных фактов.
+
+Требования к тексту:
+1. Объем: РОВНО 2 абзаца. 
+   - Первый абзац: Суть новости, конкретные факты, цифры или имена.
+   - Второй абзац: Краткий анализ, почему это важно для рынка или что это значит для читателей.
+2. Стиль: Деловой, экспертный, но живой и понятный. Без воды и клише.
+3. В конце добавь 1-2 подходящих эмодзи.
+4. НЕ используй хештеги.
+5. НЕ придумывай факты, используй только предоставленный контекст.
+
+Требования к картинке:
+Сгенерируй поле "image_prompt" на АНГЛИЙСКОМ языке. Опиши визуальный образ этой новости (например: "modern Moscow city business district, financial charts, cinematic lighting, highly detailed, no text, no watermark").
+
+Ответь СТРОГО в формате JSON с двумя полями: "post_text" и "image_prompt". Никакого лишнего текста, маркдауна или комментариев."""
+
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={
-            "Authorization": f"Bearer ******",
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/agentkostya/telegram-ai-bot",
             "X-Title": "Telegram AI Bot",
         },
         json={
             "model": "openrouter/free",
-            "messages": [{"role": "user", "content": PROMPT_TEMPLATE.format(topic=topic)}],
+            "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7,
             "response_format": { "type": "json_object" }
         },
@@ -82,16 +92,13 @@ def generate_content():
     return json.loads(result_text)
 
 def generate_image(image_prompt):
-    """Скачиваем картинку напрямую с Pollinations как файл (без водяных знаков)"""
+    """Скачиваем картинку напрямую с Pollinations как файл"""
     encoded_prompt = urllib.parse.quote(image_prompt)
     random_seed = random.randint(1, 99999)
     
-    # Используем модель flux и nologo=true
     image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&seed={random_seed}&model=flux"
     
-    print(f"🎨 Скачиваем картинку с Pollinations (seed: {random_seed})...")
-    
-    # Скачиваем картинку как байты, а не просто ссылку
+    print("🎨 Скачиваем картинку с Pollinations...")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
@@ -120,13 +127,19 @@ def send_to_telegram_with_photo(post_text, image_bytes):
     return tg_response.json()
 
 def main():
-    print("🤖 Генерируем текст и промпт для картинки на основе новостей РФ...")
+    print("🔍 Этап 1: Поиск реальных новостей...")
     try:
-        content = generate_content()
+        news_context = get_real_news()
+        print("✅ Новости найдены!")
+    except Exception as e:
+        print(f"❌ ОШИБКА поиска: {e}")
+        sys.exit(1)
+
+    print("🤖 Этап 2: Генерация поста и промпта для картинки...")
+    try:
+        content = generate_content(news_context)
         post_text = content.get("post_text")
         image_prompt = content.get("image_prompt")
-        key_facts = content.get("key_facts", [])
-        source_info = content.get("source_info", "")
 
         if not post_text or not image_prompt:
             raise ValueError("ИИ не вернул поля post_text или image_prompt")
@@ -135,21 +148,17 @@ def main():
         print(f"❌ ОШИБКА генерации текста: {e}")
         sys.exit(1)
 
-    print(f"\n📝 Текст поста:\n{post_text}")
-    if source_info:
-        print(f"\n📚 Источник: {source_info}")
-    if key_facts:
-        print(f"\n📌 Ключевые факты:")
-        for i, fact in enumerate(key_facts, 1):
-            print(f"   {i}. {fact}")
-    print(f"\n🎨 Промпт для картинки: {image_prompt}")
+    print(f"📝 Текст поста:\n{post_text}\n")
+    print(f"🎨 Промпт для картинки: {image_prompt}")
 
+    print("🎨 Этап 3: Генерация картинки...")
     try:
         image_bytes = generate_image(image_prompt)
     except Exception as e:
         print(f"❌ ОШИБКА генерации картинки: {e}")
         sys.exit(1)
 
+    print("📤 Этап 4: Отправка в Telegram...")
     try:
         result = send_to_telegram_with_photo(post_text, image_bytes)
         print(f"✅ Готово! Message ID: {result['result']['message_id']}")
