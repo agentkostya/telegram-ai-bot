@@ -22,9 +22,13 @@ TOPICS = [
 PROMPT_TEMPLATE = """Ты - профессиональный помощник для ведения Telegram-канала.
 Тема: {topic}
 
-Сгенерируй ответ СТРОГО в формате JSON с двумя полями:
-1. "post_text": Короткий, живой пост на русском языке (3-5 предложений, с 1-2 эмодзи, без хештегов).
-2. "image_prompt": Краткое, детальное визуальное описание картинки для генерации на АНГЛИЙСКОМ языке. ОБЯЗАТЕЛЬНО добавь в конец: ", no watermark, no text, no signature, masterpiece, 8k". 
+Основные источники информации: научные статьи, официальные документы, проверенные научные базы данных, государственные учреждения, авторитетные новостные издания.
+
+Сгенерируй ответ СТРОГО в формате JSON с четырьмя полями:
+1. "post_text": Информативный пост на русском языке (5-8 предложений, с 2-3 эмодзи, без хештегов). Включи конкретные факты, цифры, имена ученых или названия источников.
+2. "key_facts": Массив из 3-4 ключевых фактов по теме в формате списка.
+3. "source_info": Рекомендованный официальный источник или ссылка на тип источника (например, "НАСА", "Википедия (признанный источник)", "Научная статья").
+4. "image_prompt": Детальное визуальное описание картинки для генерации на АНГЛИЙСКОМ языке (7-10 слов). ОБЯЗАТЕЛЬНО добавь в конец: ", no watermark, no text, no signature, masterpiece, 8k". 
 Пример: "cinematic shot of a futuristic neon city, highly detailed, 8k resolution, dramatic lighting, no watermark, no text, no signature, masterpiece, 8k".
 
 НЕ добавляй никакой другой текст, маркдаун (типа ```json) или комментарии. Только валидный JSON."""
@@ -104,6 +108,8 @@ def main():
         content = generate_content()
         post_text = content.get("post_text")
         image_prompt = content.get("image_prompt")
+        key_facts = content.get("key_facts", [])
+        source_info = content.get("source_info", "")
 
         if not post_text or not image_prompt:
             raise ValueError("ИИ не вернул поля post_text или image_prompt")
@@ -113,6 +119,10 @@ def main():
         sys.exit(1)
 
     print(f"📝 Текст поста: {post_text}")
+    if source_info:
+        print(f"📚 Источник: {source_info}")
+    if key_facts:
+        print(f"📌 Ключевые факты: {', '.join(key_facts)}")
     print(f"🎨 Промпт для картинки: {image_prompt}")
 
     try:
