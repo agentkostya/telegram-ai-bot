@@ -9,7 +9,6 @@ import urllib.parse
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
-NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
 
 # Темы для новостей о бизнесе и экономике РФ
 TOPICS = [
@@ -22,81 +21,37 @@ TOPICS = [
     "Международная торговля России"
 ]
 
-# Промпт для генерации контента на основе новостей
+# Промпт для генерации контента о бизнесе и экономике РФ
 PROMPT_TEMPLATE = """Ты - профессиональный журналист для ведения Telegram-канала о бизнесе и экономике РФ.
 Тема: {topic}
 
-Актуальная новость для анализа:
-{news_content}
-
-ВАЖНО: Используй ТОЛЬКО информацию из предоставленной новости и официальные источники (РБК, TACC, Коммерсант, FinExpertiza, Skolkovo, МЭР России, ЦБ РФ, Московская биржа и т.д.).
+Используй свои знания о российском бизнесе, экономике и финансовых рынках.
+Ссылайся только на достоверные официальные источники (РБК, TACC, Коммерсант, FinExpertiza, МЭР России, ЦБ РФ, Московская биржа и т.д.).
 
 Сгенерируй ответ СТРОГО в формате JSON с четырьмя полями:
 1. "post_text": ПОДРОБНЫЙ пост на русском языке (12-15 предложений, с 3-4 эмодзи, без хештегов). Должен содержать:
-   - Краткое описание новости (2-3 предложения)
-   - Причины и предпосылки события (2-3 предложения)
-   - Влияние на рынок/экономику (2-3 предложения)
-   - Мнения экспертов если есть (2-3 предложения)
-   - Возможные последствия (2-3 предложения)
-   Включи конкретные цифры, суммы в миллиардах, проценты роста/падения, имена компаний и экспертов.
+   - Описание актуальной ситуации в теме (2-3 предложения)
+   - Ключевые факты и тренды (2-3 предложения)
+   - Влияние на российский рынок и экономику (2-3 предложения)
+   - Мнения аналитиков и экспертов (2-3 предложения)
+   - Будущие перспективы развития (2-3 предложения)
+   Включи конкретные цифры, суммы, проценты, имена компаний и экспертов.
 
-2. "key_facts": Массив из 5-6 ключевых фактов в виде статистики и цифр по новости.
-   Примеры: "Рост на 15.3%", "Инвестиции в размере $2.5 млрд", "Создано 5000 рабочих мест"
+2. "key_facts": Массив из 5-6 ключевых статистических фактов по теме.
+   Примеры: "Рост на 15.3% за квартал", "Инвестиции превысили $2.5 млрд", "Создано более 5000 рабочих мест"
 
-3. "source_info": Официальный источник новости (с указанием даты публикации если известна).
-   Используй только авторитетные источники: РБК, TACC, Коммерсант, FinExpertiza, МЭР России, ЦБ РФ, Московская биржа
+3. "source_info": Официальные авторитетные источники информации.
+   Используй: РБК, TACC, Коммерсант, FinExpertiza, МЭР России, ЦБ РФ, Московская биржа
 
 4. "image_prompt": Профессиональное визуальное описание картинки на АНГЛИЙСКОМ языке (12-15 слов). 
    Должно отражать бизнес/экономику/финансы. ОБЯЗАТЕЛЬНО в конец: ", no watermark, no text, no signature, masterpiece, 8k"
-   Примеры: "professional business meeting in modern office, stock market graphs, growth charts, financial data, 8k resolution, detailed"
+   Примеры: "professional business meeting with stock market graphs, growth charts, financial data on screens, modern office, 8k"
 
 НЕ добавляй никакой другой текст, маркдаун или комментарии. Только валидный JSON."""
 
-def get_russian_business_news():
-    """Получаем актуальные новости о бизнесе РФ из достоверных источников"""
-    
-    if not NEWS_API_KEY:
-        print("⚠️  NEWS_API_KEY не установлен, используем шаблонную новость")
-        return "Российский рынок показывает положительную динамику развития. Крупные компании инвестируют в новые проекты и расширяют деятельность."
-    
-    try:
-        # Используем News API для получения российских новостей
-        news_url = "https://newsapi.org/v2/everything"
-        params = {
-            "q": "Russia business economy",
-            "language": "ru",
-            "sortBy": "publishedAt",
-            "apiKey": NEWS_API_KEY,
-            "pageSize": 5
-        }
-        
-        print("📰 Получаем свежие новости о бизнесе в РФ...")
-        response = requests.get(news_url, params=params, timeout=10)
-        response.raise_for_status()
-        
-        articles = response.json().get("articles", [])
-        if articles:
-            # Берем самую свежую новость
-            latest_news = articles[0]
-            news_text = f"Источник: {latest_news.get('source', {}).get('name', 'Неизвестно')}\n"
-            news_text += f"Дата: {latest_news.get('publishedAt', '')}\n"
-            news_text += f"Заголовок: {latest_news.get('title', '')}\n"
-            news_text += f"Описание: {latest_news.get('description', '')}"
-            
-            print(f"✅ Новость найдена: {latest_news.get('title', 'Без названия')[:60]}...")
-            return news_text
-        else:
-            print("⚠️  Новостей не найдено, используем шаблонную новость")
-            return "Российский рынок показывает положительную динамику развития. Крупные компании инвестируют в новые проекты и расширяют деятельность."
-            
-    except Exception as e:
-        print(f"⚠️  Ошибка получения новостей: {e}")
-        return "Российский рынок показывает положительную динамику развития. Крупные компании инвестируют в новые проекты и расширяют деятельность."
-
 def generate_content():
-    """Генерируем текст через OpenRouter на основе реальных новостей"""
+    """Генерируем текст через OpenRouter по заданной теме"""
     topic = random.choice(TOPICS)
-    news_content = get_russian_business_news()
     
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -108,7 +63,7 @@ def generate_content():
         },
         json={
             "model": "openrouter/free",
-            "messages": [{"role": "user", "content": PROMPT_TEMPLATE.format(topic=topic, news_content=news_content)}],
+            "messages": [{"role": "user", "content": PROMPT_TEMPLATE.format(topic=topic)}],
             "temperature": 0.7,
             "response_format": { "type": "json_object" }
         },
