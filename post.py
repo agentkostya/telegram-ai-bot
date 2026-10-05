@@ -4,64 +4,66 @@ import random
 import json
 import sys
 import urllib.parse
-from duckduckgo_search import DDGS
+import feedparser
 
 # Загружаем настройки из секретов GitHub
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 
-# Реальные темы для поиска новостей
-SEARCH_QUERIES = [
-    "Новости бизнеса Россия последние",
-    "Экономические новости РФ официальные",
-    "Крупные компании Россия новые проекты",
-    "Стартапы и технологии бизнес Россия"
+# Официальные RSS-ленты деловых новостей РФ
+RSS_FEEDS = [
+    "https://www.rbc.ru/rbcnews/rss/",          # РБК: Главные новости
+    "https://tass.ru/rss/v2.xml?categories=7",  # ТАСС: Экономика
+    "https://www.vedomosti.ru/rss/news"         # Ведомости (если доступна, иначе игнорируется)
 ]
 
 def get_real_news():
-    """Ищет реальные свежие новости в интернете"""
-    query = random.choice(SEARCH_QUERIES)
-    print(f"🔍 Ищем реальные новости по запросу: '{query}'")
+    """Получает реальные свежие новости из официальных RSS-лент"""
+    feed_url = random.choice(RSS_FEEDS)
+    print(f"📡 Загружаем официальную ленту новостей: {feed_url}")
     
     try:
-        with DDGS() as ddgs:
-            # Получаем топ-3 реальных результата с ссылками
-            results = list(ddgs.text(query, max_results=3, region='ru-ru'))
+        feed = feedparser.parse(feed_url)
         
-        if not results:
-            raise Exception("Поиск не вернул результатов")
+        if not feed.entries:
+            raise Exception("Лента новостей пуста или недоступна")
         
-        # Формируем контекст для ИИ из реальных источников
+        # Берем 2-3 случайные свежие новости из топ-10 последних
+        recent_news = feed.entries[:10]
+        selected_news = random.sample(recent_news, min(3, len(recent_news)))
+        
+        # Формируем контекст для ИИ
         news_context = "\n".join([
-            f"- {r['title']}\n  Кратко: {r['body']}\n  Источник: {r['href']}" 
-            for r in results
+            f"- Заголовок: {entry.title}\n  Кратко: {entry.get('summary', entry.get('description', 'Нет описания'))[:250]}...\n  Источник: {entry.link}"
+            for entry in selected_news
         ])
         return news_context
+        
     except Exception as e:
-        raise Exception(f"Ошибка поиска новостей: {e}")
+        raise Exception(f"Ошибка загрузки RSS-ленты: {e}")
 
 def generate_content(news_context):
     """Генерирует пост на основе реальных новостей"""
-    prompt = f"""Ты - профессиональный финансовый журналист и ведущий Telegram-канала о бизнесе.
-Вот реальные свежие новости, которые я нашел в официальных источниках:
+    prompt = f"""Ты - профессиональный финансовый журналист и ведущий Telegram-канала о бизнесе и экономике РФ.
+Вот реальные свежие новости из официальных источников (РБК, ТАСС):
 {news_context}
 
-Твоя задача: Напиши качественный пост для Telegram-канала на основе этих реальных фактов.
+Твоя задача: Напиши качественный, экспертный пост для Telegram-канала на основе этих реальных фактов.
 
-Требования к тексту:
-1. Объем: РОВНО 2 абзаца. 
-   - Первый абзац: Суть новости, конкретные факты, цифры или имена.
-   - Второй абзац: Краткий анализ, почему это важно для рынка или что это значит для читателей.
-2. Стиль: Деловой, экспертный, но живой и понятный. Без воды и клише.
+СТРОГИЕ требования к тексту:
+1. Объем: РОВНО 2 абзаца (разделенных одним пустым переносом строки \\n\\n).
+   - Первый абзац: Суть новости, конкретные факты, цифры, названия компаний.
+   - Второй абзац: Краткий экспертный анализ: почему это важно для рынка, бизнеса или обычных людей.
+2. Стиль: Деловой, уверенный, живой. Без воды, клише и восклицательных знаков.
 3. В конце добавь 1-2 подходящих эмодзи.
 4. НЕ используй хештеги.
-5. НЕ придумывай факты, используй только предоставленный контекст.
+5. НЕ придумывай факты, опирайся только на предоставленный контекст.
 
 Требования к картинке:
-Сгенерируй поле "image_prompt" на АНГЛИЙСКОМ языке. Опиши визуальный образ этой новости (например: "modern Moscow city business district, financial charts, cinematic lighting, highly detailed, no text, no watermark").
+Сгенерируй поле "image_prompt" на АНГЛИЙСКОМ языке. Опиши строгий, кинематографичный визуальный образ этой новости (например: "modern Moscow city business district, financial data holograms, cinematic lighting, highly detailed, photorealistic, no text, no watermark").
 
-Ответь СТРОГО в формате JSON с двумя полями: "post_text" и "image_prompt". Никакого лишнего текста, маркдауна или комментариев."""
+Ответь СТРОГО в формате JSON с двумя полями: "post_text" и "image_prompt". Никакого лишнего текста, маркдауна (```json) или комментариев."""
 
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -127,15 +129,15 @@ def send_to_telegram_with_photo(post_text, image_bytes):
     return tg_response.json()
 
 def main():
-    print("🔍 Этап 1: Поиск реальных новостей...")
+    print("📡 Этап 1: Получение реальных новостей из официальных источников...")
     try:
         news_context = get_real_news()
-        print("✅ Новости найдены!")
+        print("✅ Новости успешно получены!")
     except Exception as e:
-        print(f"❌ ОШИБКА поиска: {e}")
+        print(f"❌ ОШИБКА получения новостей: {e}")
         sys.exit(1)
 
-    print("🤖 Этап 2: Генерация поста и промпта для картинки...")
+    print("🤖 Этап 2: Генерация экспертного поста и промпта для картинки...")
     try:
         content = generate_content(news_context)
         post_text = content.get("post_text")
